@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+
+from subprocess import Popen
+import sys
+import zipfile
+import argparse
+import os
+import shutil
+import tempfile
+
+## PDF viewer command.
+##
+## Evince:
+# PDFVIEWER_CMD = "/usr/bin/open"
+# PDFVIEWER_CMD = "/usr/bin/evince"
+## Adobe Reader via MSYS:
+# PDFVIEWER_CMD = "c:/Program Files (x86)/Adobe/Reader 10.0/Reader/AcroRd32.exe"
+MAC_PDF_CMD = "/usr/bin/open"
+WIN_PDF_CMD = "c:/Program Files (x86)/SumatraPDF/SumatraPDF.exe"
+if os.path.isfile(WIN_PDF_CMD):
+    PDFVIEWER_CMD = WIN_PDF_CMD
+else:
+    PDFVIEWER_CMD = MAC_PDF_CMD
+
+## Location to file receipts.
+# RECEIPT_REPOSITORY = os.path.join(os.environ.get("HOME"),
+RECEIPT_REPOSITORY = os.path.join(
+    os.environ.get("HOME"), "Documents", "Reference", "Purchases"
+)
+
+## Set up command line argument parsing.
+parser = argparse.ArgumentParser(description="Process receipts.")
+parser.add_argument("archive", metavar="ARCHIVE", help="receipt archive")
+
+## Read name of receipt archive.
+args = parser.parse_args()
+archivepath = args.archive
+
+## Extract archive.
+archive_is_dir = os.path.isdir(archivepath)
+if archive_is_dir:
+    srcdir = archivepath
+else:
+    ## Create temporary directory.
+    srcdir = tempfile.mkdtemp(dir=os.path.join(os.environ.get("HOME"), "tmp"))
+    print("Temp directory: {}".format(srcdir))
+
+    try:
+        z = zipfile.ZipFile(archivepath)
+    except IOError:
+        sys.stderr.write("error: {} is not a zip archive\n".format(archivepath))
+        os.rmdir(srcdir)
+        sys.exit(1)
+    z.extractall(srcdir)
+    z.close()
+
+## For each document, display document, prompt for name, and file
+## accordingly.
+filenames = sorted([x[2] for x in os.walk(srcdir)][0])
+n = len(filenames)
+for itr in zip(range(n), filenames):
+    i = itr[0] + 1
+    filename = itr[1]
+    filepath = os.path.join(srcdir, filename)
+    ## Viewer-recognizable tmp dir string. Need this for invoking this
+    ## script along with a Windows PDF reader from Cygwin.
+    # vsrcdir = srcdir.replace(os.path.join(os.environ.get("HOME"), "tmp"),
+    #                          "t:\\tmp")
+    # vfilepath = "{}\{}".format(vsrcdir, filename)
+    p = Popen([PDFVIEWER_CMD, filepath])
+    newfilename = input("  ({}/{}) {} -> ".format(i, n, filename))
+    p.terminate()
+    if newfilename[-4:] != ".pdf":
+        newfilename = newfilename + ".pdf"
+    newfilepath = os.path.join(RECEIPT_REPOSITORY, newfilename)
+    shutil.move(filepath, newfilepath)
+
+## Delete temporary directory and archive.
+if not archive_is_dir:
+    os.rmdir(srcdir)
+    os.remove(archivepath)
